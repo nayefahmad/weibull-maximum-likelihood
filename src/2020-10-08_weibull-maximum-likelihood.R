@@ -26,11 +26,11 @@ wbl_2p_loglik <- function(df_data, shape, scale){
     all_data <- df_data %>% pull(value)
     
     # first get result for all uncensored: 
-    uncensored_loglik <- 0
+    log_hazard <- 0
     for (i in 1:length(data_uncensored)) {
         x <- data_uncensored[i]
-        loglik <- log(wbl_2p_hazard(x, shape, scale))
-        uncensored_loglik <- uncensored_loglik + loglik 
+        log_hazard_new <- log(wbl_2p_hazard(x, shape, scale))
+        log_hazard <- log_hazard + log_hazard_new 
     }
     
     # next get result for all data: 
@@ -42,8 +42,8 @@ wbl_2p_loglik <- function(df_data, shape, scale){
         chf <- chf + chf_new
     }
     
-    # final logli: 
-    final_loglik <- uncensored_loglik - chf 
+    # final loglik: 
+    final_loglik <- log_hazard - chf 
     return(final_loglik)
 }
 
@@ -62,7 +62,9 @@ df0_data <- tibble(value = data, is_censored = 0)
 # set up guesses: 
 df1_loglik <- 
     tibble(shape = seq(0.1, 3, length.out = 500),
-           scale = rep(seq(2.99, 3.02, length.out = 5), 100)) %>% 
+           scale = rep(seq(2.99, 3.02, length.out = 5), 100)) %>%
+    
+    # add the correct values: 
     bind_rows(data.frame(shape = param_shape,
                          scale = param_scale))
     
