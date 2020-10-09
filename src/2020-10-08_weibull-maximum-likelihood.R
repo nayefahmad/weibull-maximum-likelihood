@@ -7,63 +7,83 @@
 
 #******************************************************************
 
-library(stringr)
+library(tidyverse)
+library(fitdistrplus)
 
 # Create functions: ---- 
-wbl_2p_density <- function(x, shape, scale){
+wbl_2p_hazard <- function(x, shape, scale){
     y <- shape * scale * x^(shape-1)
     return(y)
 }
 
-wbl_2p_survival <- function(x, shape, scale){
+wbl_2p_chf <- function(x, shape, scale){
     y <- scale * x^shape 
+    return(y)
 }
 
-wbl_2p_loglik <- function(data_uncensored, data_censored, shape1, scale1){
+wbl_2p_loglik <- function(df_data, shape, scale){
+    data_uncensored <- df_data %>% filter(is_censored == 0) %>% pull(value)
+    all_data <- df_data %>% pull(value)
     
     # first get result for all uncensored: 
     uncensored_loglik <- 0
     for (i in 1:length(data_uncensored)) {
         x <- data_uncensored[i]
-        loglik <- log(wbl_2p_density(x, shape1, scale1))
+        loglik <- log(wbl_2p_hazard(x, shape, scale))
         uncensored_loglik <- uncensored_loglik + loglik 
     }
     
     # next get result for all data: 
-    all_loglik <- 0 
-    combined_data <- c(data_uncensored, data_censored)
-    for (i in 1:length(combined_data)) {
-        x <- combined_data[i]
-        loglik <- log(wbl_2p_survival(x, shape1, scale1))
-        all_loglik <- all_loglik + loglik
+    chf <- 0 
+    # combined_data <- c(data_uncensored, data_censored)
+    for (i in 1:length(all_data)) {
+        x <- all_data[i]
+        chf_new <- wbl_2p_chf(x, shape, scale)
+        chf <- chf + chf_new
     }
     
     # final logli: 
-    final_loglik <- uncensored_loglik - all_loglik
-    
+    final_loglik <- uncensored_loglik - chf 
+    return(final_loglik)
 }
 
 
 
 # generate data without censoring: ----
-data <- rweibull(50, 2, 1)
+param_shape <- 2
+param_scale <- 3
 
-# try out lots of param guesses: 
-param_guesses <- list(guess1 = c(shape = 1, scale = 1), 
-                      guess2 = c(shape = 2, scale = 1))
+data <- rweibull(500, param_shape, param_scale)
+density(data) %>% plot
 
-for (i in 1:length(param_guesses)){
-    shape_1 <- param_guesses[[i]][1]
-    scale_1 <- param_guesses[[i]][2]
-    print(str_glue("Shape: {shape_1}, scale: {scale_1}"))
+df0_data <- tibble(value = data, is_censored = 0)
+
+# evaluate loglik with several param guesses: ------- 
+# set up guesses: 
+df1_loglik <- 
+    tibble(shape = seq(0.1, 3, length.out = 500),
+           scale = rep(seq(2.99, 3.02, length.out = 5), 100)) %>% 
+    bind_rows(data.frame(shape = param_shape,
+                         scale = param_scale))
     
-    loglik <- wbl_2p_loglik(data_uncensored = data, 
-                            data_censored = NULL,
-                            shape1 = shape_1,
-                            scale1 = scale_1)
-    param_guesses[[i]][3] <- loglik
-    names(param_guesses[[i]][3]) <- "loglik"
+# calculations: 
+df1_loglik <- 
+    df1_loglik %>% 
+    mutate(loglik_value = purrr::map2_dbl(shape, scale, 
+                                          wbl_2p_loglik, 
+                                          df_data = df0_data))
 
-}
+# results: 
+# df1_loglik
+df1_loglik %>% arrange(desc(loglik_value))
+wbl_2p_loglik(df0_data, shape = param_shape, scale = param_scale)
 
-param_guesses
+df1_loglik %>% 
+    ggplot(aes(x = shape, y = loglik_value)) + 
+    geom_point() + 
+    facet_wrap(~as.factor(scale))
+
+
+# check: fitting with fitdistrplus: 
+fit <- fitdist(df0_data$value, "weibull")
+summary(fit)
