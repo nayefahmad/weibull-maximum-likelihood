@@ -10,7 +10,7 @@
 library(tidyverse)
 library(fitdistrplus)
 
-# Create functions: ---- 
+# 0) Create functions: ---- 
 wbl_2p_neg_loglik <- function(df_data, shape, scale){
     par <- c(shape = shape, scale = scale)
     ncens <- df_data %>% filter(is_censored == 0) %>% pull(value)
@@ -35,23 +35,34 @@ wbl_2p_neg_loglik <- function(df_data, shape, scale){
     return(loglike_1 + loglike_2)
 }
 
+# reference: https://statwonk.com/weibull.html
+rweibull_cens <- function(n, shape, scale) {
+    a_random_death_time <- rweibull(n, shape = shape, scale = scale) 
+    a_random_censor_time <- rweibull(n, shape = shape, scale = scale)
+    observed_time <- pmin(a_random_censor_time, a_random_death_time)
+    censor <- as.integer(observed_time == a_random_death_time)
+    tibble(value = observed_time, is_censored = censor)
+}
 
 
-# generate data without censoring: ----
+#********************************************************************
+# 1) data without censoring: ----
 param_shape <- 2
 param_scale <- 3
 sample_n <- 100 
+censoring <- "none"
 
 data <- rweibull(sample_n, param_shape, param_scale)
 density(data) %>% plot
 
 df0_data <- tibble(value = data, is_censored = 0)
 
-# evaluate loglik with several param guesses: ------- 
+# 1.1) evaluate loglik with several param guesses: ------- 
 # set up guesses: 
-shape_grid <- seq(1, 2.5, length.out = sample_n)
+shape_grid <- seq(1, 5, length.out = sample_n)
 scale_grid <- seq(1, 5, length.out = sample_n)
 
+# note that we must pass a grid to geom_contour( ) below. Reference: https://vincenzocoia.com/post/contour_plots/
 df1_loglik <- 
     expand.grid(shape = shape_grid,
                 scale = scale_grid) %>% 
@@ -80,10 +91,63 @@ df1_loglik %>%
     geom_hline(yintercept = param_scale, col="red") +
     
     scale_fill_gradient(low="blue", high="red") + 
-    labs(title = "Minimizing the negative of the log-likelihood", 
-         subtitle = "Red lines show true values")
+    labs(title = "Minimizing the negative log-likelihood of the two-parameter Weibull distribution", 
+         subtitle = str_glue("Red lines show true values  \nCensoring: {censoring}  \nSample size: {sample_n}"))
 
 
 # check: fitting with fitdistrplus: 
 fit <- fitdist(df0_data$value, "weibull")
+summary(fit)
+
+
+# 2) data with censoring: ----
+param_shape <- 2
+param_scale <- 3
+sample_n <- 100 
+censoring <- "right-censored"
+
+df2_censdata <- rweibull_cens(sample_n, param_shape, param_scale)
+df2_censdata$value %>% density() %>% plot()
+
+
+# 2.1) evaluate loglik with several param guesses: ------- 
+# set up guesses: 
+shape_grid <- seq(1, 5, length.out = sample_n)
+scale_grid <- seq(1, 5, length.out = sample_n)
+
+# note that we must pass a grid to geom_contour( ) below. Reference: https://vincenzocoia.com/post/contour_plots/
+df3_loglik_censdata <- 
+    expand.grid(shape = shape_grid,
+                scale = scale_grid) %>% 
+    as.tibble() 
+
+# calculations: 
+df3_loglik_censdata <- 
+    df3_loglik_censdata %>% 
+    mutate(neg_loglik_value = purrr::map2_dbl(shape, scale, 
+                                              wbl_2p_neg_loglik, 
+                                              df_data = df2_censdata))
+
+# results: 
+# df1_loglik
+df3_loglik_censdata %>% arrange(neg_loglik_value)
+wbl_2p_neg_loglik(df2_censdata, shape = param_shape, scale = param_scale)
+
+# contour plot
+df3_loglik_censdata %>% 
+    ggplot(aes(x = shape,
+               y = scale, 
+               z = neg_loglik_value)) + 
+    geom_contour(breaks=seq(0, 200, by=1)) + 
+    
+    geom_vline(xintercept = param_shape, col="red") +
+    geom_hline(yintercept = param_scale, col="red") +
+    
+    scale_fill_gradient(low="blue", high="red") + 
+    labs(title = "Minimizing the negative log-likelihood of the two-parameter Weibull distribution", 
+         subtitle = str_glue("Red lines show true values  \nCensoring: {censoring}  \nSample size: {sample_n}"))
+
+
+# check: fitting with fitdistrplus: 
+fit <- fitdist(df2_censdata$value, "weibull")
 summary(fit)
