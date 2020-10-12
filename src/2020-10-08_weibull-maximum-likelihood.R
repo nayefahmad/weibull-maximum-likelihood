@@ -11,40 +11,28 @@ library(tidyverse)
 library(fitdistrplus)
 
 # Create functions: ---- 
-wbl_2p_hazard <- function(x, shape, scale){
-    y <- shape * scale * x^(shape-1)
-    return(y)
-}
-
-wbl_2p_chf <- function(x, shape, scale){
-    y <- scale * x^shape 
-    return(y)
-}
-
-wbl_2p_loglik <- function(df_data, shape, scale){
-    data_uncensored <- df_data %>% filter(is_censored == 0) %>% pull(value)
-    all_data <- df_data %>% pull(value)
+wbl_2p_neg_loglik <- function(df_data, shape, scale){
+    par <- c(shape = shape, scale = scale)
+    ncens <- df_data %>% filter(is_censored == 0) %>% pull(value)
+    rcens <- df_data %>% filter(is_censored == 1) %>% pull(value)
     
-    # first get result for all uncensored: 
-    log_hazard <- 0
-    for (i in 1:length(data_uncensored)) {
-        x <- data_uncensored[i]
-        log_hazard_new <- log(wbl_2p_hazard(x, shape, scale))
-        log_hazard <- log_hazard + log_hazard_new 
-    }
+    loglike_1 <- -sum(log(do.call(dweibull,  # pdf 
+                                  c(list(ncens),  # uncensored 
+                                    as.list(par)
+                                    )
+                                  )
+                          )
+                      )
     
-    # next get result for all data: 
-    chf <- 0 
-    # combined_data <- c(data_uncensored, data_censored)
-    for (i in 1:length(all_data)) {
-        x <- all_data[i]
-        chf_new <- wbl_2p_chf(x, shape, scale)
-        chf <- chf + chf_new
-    }
+    loglike_2 <- -sum(log(1 - do.call(pweibull,  # survival function 
+                                      c(list(rcens), # right-censored
+                                        as.list(par)
+                                        )   
+                                      )
+                          )
+                      )
     
-    # final loglik: 
-    final_loglik <- log_hazard - chf 
-    return(final_loglik)
+    return(loglike_1 + loglike_2)
 }
 
 
@@ -52,8 +40,9 @@ wbl_2p_loglik <- function(df_data, shape, scale){
 # generate data without censoring: ----
 param_shape <- 2
 param_scale <- 3
+sample_n <- 500 
 
-data <- rweibull(500, param_shape, param_scale)
+data <- rweibull(sample_n, param_shape, param_scale)
 density(data) %>% plot
 
 df0_data <- tibble(value = data, is_censored = 0)
@@ -61,8 +50,8 @@ df0_data <- tibble(value = data, is_censored = 0)
 # evaluate loglik with several param guesses: ------- 
 # set up guesses: 
 df1_loglik <- 
-    tibble(shape = seq(0.1, 3, length.out = 500),
-           scale = rep(seq(2.99, 3.02, length.out = 5), 100)) %>%
+    tibble(shape = seq(0.1, 10, length.out = sample_n),
+           scale = runif(sample_n, 0, 100)) %>%
     
     # add the correct values: 
     bind_rows(data.frame(shape = param_shape,
@@ -77,13 +66,18 @@ df1_loglik <-
 
 # results: 
 # df1_loglik
-df1_loglik %>% arrange(desc(loglik_value))
+df1_loglik %>% arrange(loglik_value)
 wbl_2p_loglik(df0_data, shape = param_shape, scale = param_scale)
 
 df1_loglik %>% 
-    ggplot(aes(x = shape, y = loglik_value)) + 
-    geom_point() + 
-    facet_wrap(~as.factor(scale))
+    ggplot(aes(x = shape,
+               y = scale, 
+               z = loglik_value)) + 
+    geom_contour() + 
+    # facet_wrap(~as.factor(scale)) + 
+    # geom_vline(xintercept = param_shape, col="red") + 
+    labs(title = "Minimizing the negative of the log-likelihood", 
+         subtitle = "Red line shows actual shape param value")
 
 
 # check: fitting with fitdistrplus: 
