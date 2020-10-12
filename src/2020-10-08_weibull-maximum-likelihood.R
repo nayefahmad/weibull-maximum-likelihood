@@ -80,7 +80,11 @@ df1_loglik <-
 df1_loglik %>% arrange(neg_loglik_value)
 wbl_2p_neg_loglik(df0_data, shape = param_shape, scale = param_scale)
 
-# contour plot
+fitted_shape <- df1_loglik %>% arrange(neg_loglik_value) %>% slice(1) %>% pull(shape)
+fitted_scale <- df1_loglik %>% arrange(neg_loglik_value) %>% slice(1) %>% pull(scale)
+
+
+# 1.2) contour plot: ----
 df1_loglik %>% 
     ggplot(aes(x = shape,
                y = scale, 
@@ -98,6 +102,23 @@ df1_loglik %>%
 # check: fitting with fitdistrplus: 
 fit <- fitdist(df0_data$value, "weibull")
 summary(fit)
+
+# 1.3) data with fit: ---- 
+df0_data %>% 
+    ggplot(aes(x = value)) + 
+    geom_density() + 
+    stat_function(fun = dweibull, 
+                  args = list(shape = fitted_shape, 
+                              scale = fitted_scale), 
+                  col = "dodgerblue2") + 
+    stat_function(fun = dweibull, 
+                  args = list(shape = param_shape, 
+                              scale = param_scale), 
+                  col = "red") + 
+    labs(title = "Data and fitted distribution", 
+         subtitle = "Black: data  \nRed: true distribution  \nBlue: fitted distribution")
+
+
 
 
 # 2) data with censoring: ----
@@ -133,7 +154,11 @@ df3_loglik_censdata <-
 df3_loglik_censdata %>% arrange(neg_loglik_value)
 wbl_2p_neg_loglik(df2_censdata, shape = param_shape, scale = param_scale)
 
-# contour plot
+fitted_shape <- df3_loglik_censdata %>% arrange(neg_loglik_value) %>% slice(1) %>% pull(shape)
+fitted_scale <- df3_loglik_censdata %>% arrange(neg_loglik_value) %>% slice(1) %>% pull(scale)
+
+
+# 2.2) contour plot: -----
 df3_loglik_censdata %>% 
     ggplot(aes(x = shape,
                y = scale, 
@@ -151,3 +176,20 @@ df3_loglik_censdata %>%
 # check: fitting with fitdistrplus: 
 fit <- fitdist(df2_censdata$value, "weibull")
 summary(fit)
+
+
+# 2.3) data with fit: ---- 
+df2_censdata %>% 
+    ggplot(aes(x = value)) + 
+    geom_density() + 
+    stat_function(fun = dweibull, 
+                  args = list(shape = fitted_shape, 
+                              scale = fitted_scale), 
+                  col = "dodgerblue2") +
+    stat_function(fun = dweibull, 
+                  args = list(shape = param_shape, 
+                              scale = param_scale), 
+                  col = "red") + 
+    labs(title = "Data and fitted distribution", 
+         subtitle = "Black: data  \nRed: true distribution  \nBlue: fitted distribution")
+    
