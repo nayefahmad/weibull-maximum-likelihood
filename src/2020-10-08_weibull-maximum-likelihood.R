@@ -40,7 +40,7 @@ wbl_2p_neg_loglik <- function(df_data, shape, scale){
 # generate data without censoring: ----
 param_shape <- 2
 param_scale <- 3
-sample_n <- 500 
+sample_n <- 100 
 
 data <- rweibull(sample_n, param_shape, param_scale)
 density(data) %>% plot
@@ -49,35 +49,39 @@ df0_data <- tibble(value = data, is_censored = 0)
 
 # evaluate loglik with several param guesses: ------- 
 # set up guesses: 
+shape_grid <- seq(1, 2.5, length.out = sample_n)
+scale_grid <- seq(1, 5, length.out = sample_n)
+
 df1_loglik <- 
-    tibble(shape = seq(0.1, 10, length.out = sample_n),
-           scale = runif(sample_n, 0, 100)) %>%
-    
-    # add the correct values: 
-    bind_rows(data.frame(shape = param_shape,
-                         scale = param_scale))
-    
+    expand.grid(shape = shape_grid,
+                scale = scale_grid) %>% 
+    as.tibble() 
+
 # calculations: 
 df1_loglik <- 
     df1_loglik %>% 
-    mutate(loglik_value = purrr::map2_dbl(shape, scale, 
-                                          wbl_2p_loglik, 
+    mutate(neg_loglik_value = purrr::map2_dbl(shape, scale, 
+                                          wbl_2p_neg_loglik, 
                                           df_data = df0_data))
 
 # results: 
 # df1_loglik
-df1_loglik %>% arrange(loglik_value)
-wbl_2p_loglik(df0_data, shape = param_shape, scale = param_scale)
+df1_loglik %>% arrange(neg_loglik_value)
+wbl_2p_neg_loglik(df0_data, shape = param_shape, scale = param_scale)
 
+# contour plot
 df1_loglik %>% 
     ggplot(aes(x = shape,
                y = scale, 
-               z = loglik_value)) + 
-    geom_contour() + 
-    # facet_wrap(~as.factor(scale)) + 
-    # geom_vline(xintercept = param_shape, col="red") + 
+               z = neg_loglik_value)) + 
+    geom_contour(breaks=seq(0, 200, by=1)) + 
+    
+    geom_vline(xintercept = param_shape, col="red") +
+    geom_hline(yintercept = param_scale, col="red") +
+    
+    scale_fill_gradient(low="blue", high="red") + 
     labs(title = "Minimizing the negative of the log-likelihood", 
-         subtitle = "Red line shows actual shape param value")
+         subtitle = "Red lines show true values")
 
 
 # check: fitting with fitdistrplus: 
